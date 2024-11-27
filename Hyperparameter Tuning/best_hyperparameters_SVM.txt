@@ -1,0 +1,12 @@
+Best hyperparameters:
+C: 20.848116915229
+gamma: 0.060929168577582585
+kernel: rbf
+Best hyperparameters:
+C: 34.119267436024785
+gamma: 0.06225167082802107
+kernel: rbf
+Best hyperparameters:
+C: 11.56580047082571
+gamma: 0.0993722975112584
+kernel: rbf
