@@ -1,40 +1,74 @@
+
+import numpy as np
+from sklearn.metrics import accuracy_score
 import tensorflow as tf
 from tensorflow.keras.optimizers import Adam
+#from tensorflow.keras.optimizers.legacy import Adam
 from tensorflow import keras
 from tensorflow.keras.layers import Dense, BatchNormalization, Flatten, LeakyReLU, Reshape
-from sklearn.model_selection import KFold,train_test_split
-from sklearn.svm import SVR,SVC
+import matplotlib.pyplot as plt
+from sklearn.preprocessing import MaxAbsScaler
+import pandas as pd
+from sklearn.model_selection import KFold
+import os
+os.environ["CUDA_VISIBLE_DEVICES"]="0,1,2,3"
+plt.rcParams['font.sans-serif'] = 'SimHei'
+plt.rcParams['axes.unicode_minus'] = False
+plt.style.use('ggplot')
+# gpus = tf.config.list_physical_devices(device_type='GPU')
+# cpus = tf.config.list_physical_devices(device_type='CPU')
+# print(gpus, cpus)
+gpus = tf.config.list_physical_devices(device_type='GPU')
+tf.config.set_visible_devices(devices=gpus[0:2], device_type='GPU')
+for gpu in gpus[0:2]:
+    tf.config.experimental.set_memory_growth(device=gpu, enable=True)
+import pandas as pd
+import numpy as np
+from sklearn.svm import SVR
+from sklearn.svm import SVC
 from sklearn.preprocessing import StandardScaler, MaxAbsScaler
 from bayes_opt import BayesianOptimization
-from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error, mean_squared_error, r2_score,accuracy_score,classification_report
+from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error, mean_squared_error, r2_score
+from sklearn.model_selection import KFold
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+from sklearn.metrics import classification_report
 from scipy.linalg import sqrtm
 import joblib
 import numpy as np
 import pandas as pd
 import multiprocessing
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, MaxAbsScaler
 from sklearn.svm import SVR
+from sklearn.metrics import accuracy_score
 import matplotlib.pyplot as plt
 from collections import OrderedDict
 from functools import partial
+import os
+import numpy as np
+from sklearn.svm import SVR
+from sklearn.preprocessing import MaxAbsScaler
+import pandas as pd
 import optuna
 from collections import defaultdict
+from sklearn.metrics import mean_squared_error, mean_absolute_error, mean_absolute_percentage_error, r2_score
+from sklearn.model_selection import KFold, train_test_split
+from sklearn.preprocessing import StandardScaler
+from bayes_opt import BayesianOptimization
+import multiprocessing
 from functools import partial
 import pickle
 import warnings
+
 warnings.filterwarnings('ignore')
 from collections import OrderedDict
-import os
-from sklearn.preprocessing import LabelEncoder
-os.environ["CUDA_VISIBLE_DEVICES"]="0,1,2,3"
-gpus = tf.config.list_physical_devices(device_type='GPU')
-tf.config.set_visible_devices(devices=gpus[0:2], device_type='GPU')
-for gpu in gpus[0:2]:
-    tf.config.experimental.set_memory_growth(device=gpu, enable=True)
+
 
 class GAN():
     # init
     def __init__(self):
-        self.dims = 4
+        self.dims = 13
         self.img_shape = (self.dims,)
         self.gen_data = None
         # Adam optimizer
@@ -79,7 +113,7 @@ class GAN():
         model.add(Dense(32))
         model.add(LeakyReLU(alpha=0.2))
         model.add(BatchNormalization(momentum=0.8))
-        model.add(Dense(4, activation='tanh'))
+        model.add(Dense(13, activation='tanh'))
         model.add(Reshape(self.img_shape))
 
         model.summary()
@@ -135,6 +169,11 @@ class GAN():
 
         for epoch in range(epochs):
 
+            # ---------------------
+            #  train discriminator
+            # ---------------------
+
+            # select half_batch size data randomly
             idx = np.random.randint(0, X_data.shape[0], half_batch)
             imgs = X_data[idx]
 
@@ -146,6 +185,11 @@ class GAN():
             d_loss_real = self.discriminator.train_on_batch(imgs, np.ones((half_batch, 1)))
             d_loss_fake = self.discriminator.train_on_batch(gen_imgs, np.zeros((half_batch, 1)))
             d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
+
+            # ---------------------
+            #   train generator
+            # ---------------------
+
             noise = np.random.normal(0, 1, (batch_size, 10))
 
             valid_y = np.array([1] * batch_size)
@@ -155,7 +199,10 @@ class GAN():
 
             self.d_losses.append(d_loss[0])
             self.g_losses.append(g_loss)
-            if epoch > 0 and abs(self.d_losses[-1] - self.d_losses[-2]) < 1e-6:
+
+            # Early stopping mechanism: Monitor training loss
+            # Stop if we reached the maximum epoch without significant loss improvement
+            if epoch > 0 and abs(self.d_losses[-1] - self.d_losses[-2]) < 1e-6:  # Adjust this small threshold as necessary
                 patience_counter += 1
                 if patience_counter >= 10:  # Set your patience here
                     print(f"Early stopping at epoch {epoch} due to minimal loss change.")
@@ -163,6 +210,22 @@ class GAN():
             else:
                 patience_counter = 0  # Reset patience counter if loss improves
 
+            # display the progress log
+            # print ("%d [D loss: %f, acc.: %.2f%%] [G loss: %f]" % (epoch, d_loss[0], 100*d_loss[1], g_loss))
+
+            # save data at certain intervals
+            # if epoch % save_interval == 0:
+            #     noise = np.random.normal(0, 1, (batch_size, 10))
+            #     gen_imgs = self.generator.predict(noise)
+            #     real_features = X_data[:half_batch]  # 真实样本作为特征
+            #     generated_features = gen_imgs  # 生成样本作为特征
+            #
+            #     # 计算 FID 并存储
+            #     fid = self.calculate_fid(real_features, generated_features)
+            #     self.fid_scores.append(fid)
+            #     if epoch % save_interval == 0:
+            #         print(f"Epoch {epoch}: FID = {fid}")
+            # 计算FID并存储
             noise = np.random.normal(0, 1, (batch_size, 10))
             gen_imgs = self.generator.predict(noise)
             real_features = X_data[:half_batch]  # 真实样本作为特征
@@ -204,7 +267,7 @@ def Inverse_transform(X, X_gen):
 
     return X_gen
 
-from sklearn.metrics import accuracy_score
+
 def SVR_opt(X_true, y_true, X_gen=None, y_gen=None, use_gendata=True):
     # objection function
     loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
@@ -270,6 +333,11 @@ def Target_predict(X, y, gen_data):
 
     return X_gen_fea, y_gen,X_gen_fea_origin,X_fea
 
+
+
+
+
+
 def random_search(random, gen_data_path, X_train, y_train, X_test, y_test, X_train_scaled, gen_number):
     accuracy2_list = []
     best_accuracy = -float('inf')  # Variable to track the best accuracy
@@ -332,14 +400,33 @@ def random_search(random, gen_data_path, X_train, y_train, X_test, y_test, X_tra
         joblib.dump(best_model, "best_model_svr.joblib")
         joblib.dump(best_scaler, "best_scaler_svr.joblib")
         print("Best model and scaler saved!")
+        #
+        # # Load the validation dataset (valida.csv)
+        # valida_data = pd.read_csv(valida_file_path)
+        # X_valida = valida_data.iloc[:, 0:13]  # Assuming first 13 columns are features
+        #
+        # # Transform the validation data using the same scaler
+        # X_valida_scaled = best_scaler.transform(X_valida)
+        #
+        # # Predict using the best model
+        # y_valida_pred = best_model.predict(X_valida_scaled)
+        # print("Predictions on valida.csv:", y_valida_pred)
+        #
+        # # Save predictions to a file
+        # valida_data['predictions'] = y_valida_pred
+        # valida_data.to_csv('valida_predictions.csv', index=False)
+        # print("Predictions saved to 'valida_predictions.csv'")
+
     return [int(gen_number / 2), max(accuracy2_list)]
 
-
+from sklearn.preprocessing import LabelEncoder
 
 
 def standard_error(data):
     return np.std(data) / np.sqrt(len(data))
 
+
+# Adding the rest of the code (e.g., random_search function) which is assumed to be implemented elsewhere in the code.
 
 if __name__ == '__main__':
 
@@ -438,151 +525,3 @@ if __name__ == '__main__':
         num_list[i] / 2, np.mean(mean_accuracy2)))
         print('%d Generate the max accuracy2 of 10 divisions under the number: %f' % (
         num_list[i] / 2, max(mean_accuracy2)))
-
-
-# Function to calculate standard error
-def standard_error(data):
-    """Calculate the standard error of the mean."""
-    return np.std(data) / np.sqrt(len(data))
-
-
-# Function to load and preprocess data
-def load_and_preprocess_data(file_path):
-    """Load dataset and encode the target variable."""
-    df = pd.read_csv(file_path)
-    le = LabelEncoder()
-    df['Phase_inshort'] = le.fit_transform(df['Phase_inshort'].astype(str))
-
-    X = df.iloc[:, :-1].values  # Features
-    y = df.iloc[:, -1].values  # Target
-    return X, y
-
-
-# Function to scale features using StandardScaler
-def scale_features(X_train, X_test):
-    """Scale features using StandardScaler."""
-    scaler = StandardScaler().fit(X_train)
-    X_train_scaled = scaler.transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
-    return X_train_scaled, X_test_scaled
-
-
-# Function to scale features using MaxAbsScaler
-def scale_maxabs_features(X_train, X_test):
-    """Scale features using MaxAbsScaler."""
-    scaler = MaxAbsScaler().fit(X_train)
-    X_train_scaled = scaler.transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
-    return X_train_scaled, X_test_scaled
-
-
-# Function to optimize SVR model
-def optimize_svr(X_train, y_train):
-    """Train and return an SVR model."""
-    svr_model = SVR_opt(X_train, y_train, use_gendata=False)
-    svr_model.fit(X_train, y_train)
-    return svr_model
-
-
-# Function to perform random search and data generation
-def perform_random_search(random, gen_data_path, X_train, y_train, X_test, y_test, X_train_scaled, num_list):
-    """Use multiprocessing to perform random search on data generation."""
-    pool = multiprocessing.Pool(5)
-    results = pool.map(
-        partial(random_search, random, gen_data_path, X_train, y_train, X_test, y_test, X_train_scaled), num_list)
-    pool.close()
-    pool.join()
-    return results
-
-
-# Function to plot accuracy with confidence intervals
-def plot_accuracy_with_ci(accuracy_list, accuracy_se, title, xlabel, ylabel):
-    """Plot accuracy with confidence intervals."""
-    plt.figure(figsize=(10, 6))
-    plt.errorbar(range(len(accuracy_list)), accuracy_list, yerr=accuracy_se, fmt='o', label='Accuracy with CI',
-                 color='blue', capsize=5)
-    plt.xlabel(xlabel, fontsize=12)
-    plt.ylabel(ylabel, fontsize=12)
-    plt.title(title, fontsize=14)
-    plt.grid(True)
-    plt.legend()
-    plt.show()
-
-
-# Main function
-def main():
-    # Load and preprocess data
-    df_path = './IM_SS_AM1.csv'
-    X_true, y = load_and_preprocess_data(df_path)
-
-    # Initialize variables
-    test_size = 0.2
-    num_list = [200, 400, 600, 800, 1000]
-    gen_data_path = './gen_data_file'
-    os.makedirs(gen_data_path, exist_ok=True)
-
-    accuracy1_list = []
-    best_number_list = []
-    best_accuracy2_list = []
-    all_accuracy2_list = []
-    random_list = list(range(0, 46, 5))
-
-    # Loop through different random splits for cross-validation
-    for random in random_list:
-        # Split dataset into train and test
-        X_train, X_test, y_train, y_test = train_test_split(X_true, y, test_size=test_size, random_state=random)
-
-        # Scale features for SVR model
-        X_train_scaled, X_test_scaled = scale_features(X_train[:, 0:13], X_test[:, 0:13])
-
-        # Train and evaluate SVR model without data augmentation
-        svr_model = optimize_svr(X_train_scaled, y_train)
-        y_pred1 = svr_model.predict(X_test_scaled)
-        accuracy1_score = accuracy_score(y_test, y_pred1)
-        accuracy1_list.append(accuracy1_score)
-
-        # Scale features for data generation with MaxAbsScaler
-        X_train_scaled_maxabs, X_test_scaled_maxabs = scale_maxabs_features(X_train, X_test)
-
-        # Perform random search for data generation
-        results = perform_random_search(random, gen_data_path, X_train, y_train, X_test, y_test, X_train_scaled_maxabs,
-                                        num_list)
-
-        # Extract and store results
-        gen_num = [x[0] for x in results]
-        accuracy2_list = list(map(lambda x: x[1], results))
-        all_accuracy2_list.append(accuracy2_list)
-
-        # Find the best number of generated data for the current fold
-        best_idx = accuracy2_list.index(max(accuracy2_list))
-        best_number_list.append(gen_num[best_idx])
-        best_accuracy2_list.append(max(accuracy2_list))
-
-    # Calculate confidence intervals for accuracy1 and accuracy2
-    accuracy1_mean = np.mean(accuracy1_list)
-    accuracy1_se = standard_error(accuracy1_list)
-
-    accuracy2_mean = [np.mean(x) for x in zip(*all_accuracy2_list)]
-    accuracy2_se = [standard_error(x) for x in zip(*all_accuracy2_list)]
-
-    # Plot accuracy1 with confidence intervals
-    plot_accuracy_with_ci(accuracy1_list, accuracy1_se,
-                          title='Accuracy1 with Confidence Interval',
-                          xlabel='Random Division Index', ylabel='Accuracy1')
-
-    # Plot accuracy2 with confidence intervals
-    plot_accuracy_with_ci(accuracy2_mean, accuracy2_se,
-                          title='Accuracy2 with Confidence Interval for Different Generated Data Numbers',
-                          xlabel='Number of Generated Data', ylabel='Accuracy2')
-
-    # Print summary of results
-    print(f'The average of 10 divisions of accuracy1_score is: {accuracy1_mean}')
-    print(f'The max of 10 divisions of accuracy1_score is: {max(accuracy1_list)}')
-    for i in range(len(num_list)):
-        mean_accuracy2 = [x[i] for x in all_accuracy2_list]
-        print(f'{num_list[i] // 2} Generate: average accuracy2 = {np.mean(mean_accuracy2)}')
-        print(f'{num_list[i] // 2} Generate: max accuracy2 = {max(mean_accuracy2)}')
-
-
-if __name__ == '__main__':
-    main()
